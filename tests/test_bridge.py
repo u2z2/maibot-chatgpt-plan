@@ -174,7 +174,7 @@ model_list=["old-model"]
         async def upstream(request):
             body = await request.json()
             self.assertIsInstance(body['input'], list)
-            return web.Response(text='data: {"type":"response.completed","response":{}}\n\n',content_type='text/event-stream')
+            return web.Response(text='data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","content":[{"type":"output_text","text":"连接成功"}]}}\n\ndata: {"type":"response.completed","response":{}}\n\n',content_type='text/event-stream')
         app = web.Application()
         app.router.add_post('/responses',upstream)
         server = TestServer(app)
@@ -194,6 +194,45 @@ model_list=["old-model"]
             self.assertIn('测试成功',self.bridge.message)
         finally:
             module.RESOURCE = original_resource
+            await server.close()
+
+    async def test_api_reconstructs_text_and_empty_activation_preserves_config(self):
+        self.bridge.save_credentials({'client_id':'issued-client','access_token':'mock-token',
+            'refresh_token':'mock-refresh','expires_at':time.time()+3600,
+            'scopes':['chatgpt.tokens.use.direct']})
+        self.bridge.models = [{'slug':'mock-model'}]
+        self.bridge.runtime.update(allowed_model='mock-model', personal_use_authorized_at=time.time())
+        empty = False
+        async def upstream(request):
+            body = 'data: {"type":"response.completed","response":{"output":[]}}\n\n'
+            if not empty:
+                body = 'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","content":[{"type":"output_text","text":"ok"}]}}\n\n' + body
+            return web.Response(text=body,content_type='text/event-stream')
+        app = web.Application()
+        app.router.add_post('/responses',upstream)
+        server = TestServer(app)
+        await server.start_server()
+        old_resource = module.RESOURCE
+        module.RESOURCE = str(server.make_url('')).rstrip('/')
+        try:
+            headers = {**self.headers,'Authorization':'Bearer '+self.bridge.runtime['key']}
+            r = await self.client.post('/v1/responses',headers=headers,
+                json={'model':'mock-model','input':'hello','stream':True,'store':False})
+            from maibot_chatgpt_plan.streaming import parse_event, has_text_output
+            events = [parse_event(part.encode()+b'\n\n') for part in (await r.text()).split('\n\n') if part]
+            self.assertTrue(has_text_output(events[-1]))
+            empty = True
+            original = self.config.read_bytes()
+            runtime = self.bridge.runtime.copy()
+            control = {**self.headers,'Origin':ORIGIN,'Cookie':'bridge_csrf='+self.bridge.csrf}
+            r = await self.client.post('/activate',headers=control,
+                data={'model':'mock-model','personal_use':'on'},allow_redirects=False)
+            self.assertEqual(r.status,302)
+            self.assertEqual(self.config.read_bytes(),original)
+            self.assertEqual(self.bridge.runtime,runtime)
+            self.assertIn('非空文本',self.bridge.message)
+        finally:
+            module.RESOURCE = old_resource
             await server.close()
 
 if __name__ == '__main__':

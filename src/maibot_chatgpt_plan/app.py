@@ -16,6 +16,7 @@ import jwt
 import tomlkit
 from .storage import protect_write, protected_read, secure_directory
 from .protocol import normalize_request
+from .streaming import iter_response_stream, parse_event, has_text_output
 from .adapter import add_model_option
 from .auth import validate_id_token
 
@@ -211,18 +212,16 @@ class Bridge:
                     if r.status != 200:
                         detail = await self.error_detail(r)
                         raise ValueError(f'测试请求失败（HTTP {r.status}）：{detail}。没有添加模型。')
-                    async for raw in r.content:
-                        if raw.startswith(b'data: '):
-                            data = raw[6:].strip()
-                            if data == b'[DONE]':
-                                continue
-                            event = json.loads(data)
-                            if event.get('type') == 'response.completed':
-                                completed = True
-                            elif event.get('type') in ('response.failed', 'response.incomplete', 'error'):
-                                raise ValueError('测试未完成，请检查订阅额度；没有添加模型。')
+                    async for frame in iter_response_stream(r.content):
+                        event = parse_event(frame)
+                        if event is None:
+                            continue
+                        if event.get('type') == 'response.completed':
+                            completed = has_text_output(event)
+                        elif event.get('type') in ('response.failed', 'response.incomplete', 'error'):
+                            raise ValueError('测试未完成，请检查订阅额度；没有添加模型。')
                 if not completed:
-                    raise ValueError('测试连接提前结束，没有添加模型。')
+                    raise ValueError('测试未收到完整的非空文本响应，没有添加模型。')
                 self.configure(model)
                 self.last_tested_model = model
                 self.message = '测试成功，已添加 chatgpt-plan-local 可选模型。当前任务模型保持不变，你可以在 MaiBot 模型设置中自行选择 GPT。'
@@ -335,7 +334,7 @@ class Bridge:
             response = web.StreamResponse(headers={'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store'})
             await response.prepare(request)
             try:
-                async for chunk in r.content.iter_any():
+                async for chunk in iter_response_stream(r.content):
                     await response.write(chunk)
                 await response.write_eof()
             except (ConnectionResetError, asyncio.CancelledError):

@@ -34,7 +34,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 4. 确认个人使用和自动化授权，点击 **测试并添加 GPT 可选模型**。
 5. 在 MaiBot 中自行选择 `chatgpt-plan-local`。提供商名称为 `MaiBot-ChatGPT-Plan`。
 
-测试会发送一句简短问候并使用少量订阅额度。只有收到 `response.completed` 后才添加模型。若 MaiBot 未自动加载新选项，在启动器中重启 MaiBot。
+测试会发送一句简短问候并使用少量订阅额度。只有收到完整且包含非空文本的 `response.completed` 后才添加模型。桥接会将前面已完成的输出补入缺少 output 的最终事件，避免 MaiBot 误报“响应为空”。若 MaiBot 未自动加载新选项，在启动器中重启 MaiBot。
 
 ### 自定义端口与配置位置
 
@@ -83,6 +83,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 - **登录按钮无响应／过期**：刷新设置页，确保浏览器允许本机页面 Cookie，再重新登录。
 - **HTTP 400**：页面会显示经过脱敏的上游原因；确认使用文本模型和当前支持的请求格式。
 - **授权或额度失效**：查看 ChatGPT 的 Usage 设置。重新登录不会增加额度，本应用也不会自动转为另行收费的 API。
+- **MaiBot 能力测试**：本版只支持文本，包含图片或原生工具调用的综合测试会提示不支持；不要据此启用视觉或工具功能。
 - **收消息不回复**：MaiBot 的回复频率、@ 触发和规划流程独立于本集成；检查 MaiBot 日志。
 
 ## 开发与验证
