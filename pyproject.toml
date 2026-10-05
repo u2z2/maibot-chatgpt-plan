@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maibot-chatgpt-plan"
+version = "0.1.0"
+description = "Local Windows ChatGPT plan authorization integration for MaiBot"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+  "aiohttp>=3.11,<4",
+  "PyJWT[crypto]>=2.9,<3",
+  "tomlkit>=0.13,<1",
+  "pywin32>=308; sys_platform == 'win32'",
+]
+classifiers = ["Operating System :: Microsoft :: Windows", "Development Status :: 3 - Alpha"]
+
+[project.scripts]
+maibot-chatgpt-plan = "maibot_chatgpt_plan.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
